@@ -5,10 +5,10 @@ import (
 	"regexp"
 )
 
-// 获取所有帖子的 URL，这里我选择使用正则表达式的方式来实现
+// 获取所有帖子的 URL，这里选择使用正则表达式的方式来实现
 const cityListRe = `(<https://www.douban.com/group/topic/[0-9a-z]+/>)"[^>]*>([^<]+)</a>`
 
-func ParseURL(contents []byte) collect.ParseResult {
+func ParseURL(contents []byte, req *collect.Request) collect.ParseResult {
 	re := regexp.MustCompile(cityListRe)
 
 	matches := re.FindAllSubmatch(contents, -1)
@@ -17,8 +17,12 @@ func ParseURL(contents []byte) collect.ParseResult {
 	for _, m := range matches {
 		u := string(m[1])
 		result.Requests = append(result.Requests, &collect.Request{
-			Url: u,
-			ParseFunc: func(c []byte) collect.ParseResult {
+			Url:      u,
+			WaitTime: req.WaitTime,
+			Cookie:   req.Cookie,
+			Depth:    req.Depth + 1, // 将 Depth 加 1，这样就标识了下一层的深度
+			MaxDepth: req.MaxDepth,
+			ParseFunc: func(c []byte, request *collect.Request) collect.ParseResult {
 				return GetContent(c, u)
 			},
 		})

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crawler/proxy"
 	"fmt"
+	"go.uber.org/zap"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/unicode"
@@ -40,22 +41,10 @@ func (BaseFetch) Get(request *Request) ([]byte, error) {
 	return ioutil.ReadAll(utf8Reader)
 }
 
-func DetermineEncoding(r *bufio.Reader) encoding.Encoding {
-	bytes, err := r.Peek(1024)
-
-	// 如果返回的 HTML 文本小于 1024 字节，我们认为当前 HTML 文本有问题，直接返回默认的 UTF-8 编码就好了。
-	if err != nil {
-		fmt.Printf("fetch error: %v\n", err)
-		return unicode.UTF8
-	}
-	// charset.DetermineEncoding 函数用于检测并返回对应 HTML 文本的编码。
-	e, _, _ := charset.DetermineEncoding(bytes, "")
-	return e
-}
-
 // 模拟浏览器访问
 type BrowserFetch struct {
 	Timeout time.Duration // 增加 Timeout 超时参数，进行超时控制
+	Logger  *zap.Logger
 	Proxy   proxy.ProxyFunc
 }
 
@@ -79,16 +68,30 @@ func (b BrowserFetch) Get(request *Request) ([]byte, error) {
 		req.Header.Set("Cookie", request.Cookie)
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36 Edg/108.0.1462.46")
 
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
+	fmt.Println("resp content", resp)
 	bodyReader := bufio.NewReader(resp.Body)
+	fmt.Println("bodyReader", bodyReader)
 	e := DetermineEncoding(bodyReader)
 	utf8Reader := transform.NewReader(bodyReader, e.NewDecoder())
 
 	return ioutil.ReadAll(utf8Reader)
+}
+
+func DetermineEncoding(r *bufio.Reader) encoding.Encoding {
+	bytes, err := r.Peek(1024)
+	// 如果返回的 HTML 文本小于 1024 字节，我们认为当前 HTML 文本有问题，直接返回默认的 UTF-8 编码就好了。
+	if err != nil {
+		fmt.Printf("fetch error: %v\n", err)
+		return unicode.UTF8
+	}
+	// charset.DetermineEncoding 函数用于检测并返回对应 HTML 文本的编码。
+	e, _, _ := charset.DetermineEncoding(bytes, "")
+	return e
 }
