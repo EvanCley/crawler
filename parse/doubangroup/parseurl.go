@@ -17,11 +17,10 @@ func ParseURL(contents []byte, req *collect.Request) collect.ParseResult {
 	for _, m := range matches {
 		u := string(m[1])
 		result.Requests = append(result.Requests, &collect.Request{
-			Url:      u,
-			WaitTime: req.WaitTime,
-			Cookie:   req.Cookie,
-			Depth:    req.Depth + 1, // 将 Depth 加 1，这样就标识了下一层的深度
-			MaxDepth: req.MaxDepth,
+			Method: "GET",
+			Task:   req.Task,
+			Url:    u,
+			Depth:  req.Depth + 1, // 将 Depth 加 1，这样就标识了下一层的深度
 			ParseFunc: func(c []byte, request *collect.Request) collect.ParseResult {
 				return GetContent(c, u)
 			},

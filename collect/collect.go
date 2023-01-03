@@ -2,6 +2,7 @@ package collect
 
 import (
 	"bufio"
+	"crawler/extensions"
 	"crawler/proxy"
 	"fmt"
 	"go.uber.org/zap"
@@ -64,11 +65,11 @@ func (b BrowserFetch) Get(request *Request) ([]byte, error) {
 		return nil, fmt.Errorf("get url failed: %v", err)
 	}
 
-	if len(request.Cookie) > 0 {
-		req.Header.Set("Cookie", request.Cookie)
+	if len(request.Task.Cookie) > 0 {
+		req.Header.Set("Cookie", request.Task.Cookie)
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36 Edg/108.0.1462.46")
+	req.Header.Set("User-Agent", extensions.GenerateRandomUA())
 
 	resp, err := client.Do(req)
 	if err != nil {

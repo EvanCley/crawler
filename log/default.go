@@ -19,7 +19,7 @@ func DefaultEncoder() zapcore.Encoder {
 	return zapcore.NewJSONEncoder(DefaultEncoderConfig())
 }
 
-// 默认的选项会打印调用时的文件与行号，并且只有当日志等级在 DPanic 等级之上时，才输出函数的堆栈信息。
+// DefaultOption 默认的选项会打印调用时的文件与行号，并且只有当日志等级在 DPanic 等级之上时，才输出函数的堆栈信息。
 func DefaultOption() []zap.Option {
 	var stackTraceLevel zap.LevelEnablerFunc = func(level zapcore.Level) bool {
 		return level >= zap.DPanicLevel

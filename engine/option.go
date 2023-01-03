@@ -12,6 +12,7 @@ type options struct {
 	Fetcher   collect.Fetcher
 	Logger    *zap.Logger
 	Seeds     []*collect.Task // 初始的 Seed 种子任务（生成初始网址列表）
+	scheduler Scheduler
 }
 
 var defaultOptions = options{

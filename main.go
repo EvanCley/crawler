@@ -41,7 +41,7 @@ func main() {
 		//Proxy:   p,
 	}
 
-	s := engine.NewSchedule(
+	s := engine.NewEngine(
 		engine.WithWorkCount(5),
 		engine.WithFetcher(f),
 		engine.WithLogger(logger),
