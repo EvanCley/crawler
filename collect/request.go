@@ -14,6 +14,7 @@ type Request struct {
 	Method    string
 	Depth     int // 表示任务的当前深度，最初始的深度为 0
 	Priority  int
+	RuleName  string
 	ParseFunc func([]byte, *Request) ParseResult // ParseFunc 函数会解析从网站获取到的网站信息，并返回 Requests 数组用于进一步获取数据
 }
 
@@ -26,6 +27,7 @@ type ParseResult struct {
 // 但是我们希望有一个字段能够表示一整个网站的爬取任务，因此我们需要抽离出一个新的结构 Task 作为一个爬虫任务，而 Request 则作为单独的请求存在。
 // Task 有些参数是整个任务共有的，例如 Cookie、MaxDepth（最大深度）、WaitTime（默认等待时间）和 RootReq（任务中的第一个请求）。
 type Task struct {
+	Name        string // 用户界面显示的名称（作为一个任务唯一的标识，应保证唯一性）
 	Url         string
 	Cookie      string
 	WaitTime    time.Duration
@@ -33,8 +35,14 @@ type Task struct {
 	Reload      bool // 网站是否可以重复爬取
 	Visited     map[string]bool
 	VisitedLock sync.Mutex
-	RootReq     *Request // 任务中的第一个请求
 	Fetcher     Fetcher
+	Rule        RuleTree // 规则条件，其中 Root 生成了初始化的爬虫任务
+}
+
+// Context 为自定义结构体，用于传递上下文信息，也就是当前的请求参数以及要解析的内容字节数组。后续还会添加请求中的临时数据等上下文数据。
+type Context struct {
+	Body []byte   // 要解析的内容字节数组
+	Req  *Request // 当前的请求参数
 }
 
 // Check 判断爬虫的当前深度是否超过了最大深度

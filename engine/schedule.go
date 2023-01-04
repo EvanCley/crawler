@@ -2,6 +2,7 @@ package engine
 
 import (
 	"crawler/collect"
+	"crawler/parse/doubangroup"
 	"go.uber.org/zap"
 	"sync"
 )
@@ -29,6 +30,25 @@ type Schedule struct {
 	priReqQueue []*collect.Request    // 在调度函数 Schedule 中，我们会优先从优先队列中获取请求。而在放入请求时，如果请求的优先级更高，也会单独放入优先级队列。
 	reqQueue    []*collect.Request
 	Logger      *zap.Logger
+}
+
+var Store = &CrawlerStore{
+	list: []*collect.Task{},
+	hash: map[string]*collect.Task{},
+}
+
+type CrawlerStore struct {
+	list []*collect.Task
+	hash map[string]*collect.Task
+}
+
+func init() {
+	Store.Add(doubangroup.DoubanGroupTask)
+}
+
+func (cs *CrawlerStore) Add(task *collect.Task) {
+	cs.hash[task.Name] = task
+	cs.list = append(cs.list, task)
 }
 
 func NewEngine(opts ...Option) *Crawler {
@@ -102,9 +122,10 @@ func (s *Schedule) Schedule() {
 func (e *Crawler) Schedule() {
 	var reqs []*collect.Request
 	for _, seed := range e.Seeds {
-		seed.RootReq.Task = seed
-		seed.RootReq.Url = seed.Url
-		reqs = append(reqs, seed.RootReq)
+		task := Store.hash[seed.Name]
+		// 在调度器启动时，通过 task.Rule.Root() 获取初始化任务，并加入到任务队列中。
+		rootReqs := task.Rule.Root()
+		reqs = append(reqs, rootReqs...)
 	}
 	go e.scheduler.Schedule()
 	go e.scheduler.Push(reqs...)
@@ -123,23 +144,34 @@ func (e *Crawler) Run() {
 // CreateWork 创建出实际处理任务的函数
 func (e *Crawler) CreateWork() {
 	for {
-		r := e.scheduler.Pull()           // 接收到调度器分配的任务；
-		if err := r.Check(); err != nil { // 判断当前请求是否达到最大深度
+		req := e.scheduler.Pull()           // 接收到调度器分配的任务；
+		if err := req.Check(); err != nil { // 判断当前请求是否达到最大深度
 			e.Logger.Error("depth check failed", zap.Error(err))
 			continue
 		}
-		if e.HasVisited(r) { // 判断当前请求是否已被访问
-			e.Logger.Debug("request has visited", zap.String("url:", r.Url))
+		if !req.Task.Reload && e.HasVisited(req) { // 判断当前请求是否已被访问
+			e.Logger.Debug("request has visited", zap.String("url:", req.Url))
 			continue
 		}
-		e.StoreVisited(r)             // 设置当前请求已被访问
-		body, err := e.Fetcher.Get(r) // 访问服务器
+		e.StoreVisited(req)                    // 设置当前请求已被访问
+		body, err := req.Task.Fetcher.Get(req) // 访问服务器
 		if err != nil {
-			e.Logger.Error("can't fetch ", zap.Error(err))
+			e.Logger.Error("can't fetch ", zap.Error(err), zap.String("url", req.Url))
+			e.SetFailure(req) // 设置请求失败
 			continue
 		}
-		result := r.ParseFunc(body, r) // 解析服务器返回的数据
-		e.out <- result                // 将返回的数据发送到 out 通道中，方便后续的处理
+		if len(body) < 6000 {
+			e.Logger.Error("can't fetch ", zap.Int("length", len(body)), zap.String("url", req.Url))
+			e.SetFailure(req)
+			continue
+		}
+		rule := req.Task.Rule.Trunk[req.RuleName]
+		result := rule.ParseFunc(&collect.Context{Body: body, Req: req}) // 解析服务器返回的数据
+		if len(result.Requests) > 0 {
+			go e.scheduler.Push(result.Requests...)
+		}
+
+		e.out <- result // 将返回的数据发送到 out 通道中，方便后续的处理
 	}
 }
 

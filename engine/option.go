@@ -42,3 +42,9 @@ func WithSeeds(seed []*collect.Task) Option {
 		opts.Seeds = seed
 	}
 }
+
+func WithScheduler(scheduler Scheduler) Option {
+	return func(opts *options) {
+		opts.scheduler = scheduler
+	}
+}

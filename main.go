@@ -4,12 +4,12 @@ import (
 	"crawler/collect"
 	"crawler/engine"
 	"crawler/log"
-	"crawler/parse/doubangroup"
-	"fmt"
 	"go.uber.org/zap/zapcore"
 	"time"
 )
 
+// 启动爬虫任务的方式可以分为两种，一种是加载配置文件，另一种是在调用用户接口时，传递任务名称和参数。不过在这里我们先用硬编码的形式来实现。
+// 而通过配置文件和用户接口来操作任务的方式我们会有专门的课程来实现。
 func main() {
 	// log
 	plugin := log.NewStdoutPlugin(zapcore.InfoLevel)
@@ -23,29 +23,24 @@ func main() {
 	//	logger.Error("RoundRobinProxySwitcher failed")
 	//}
 
-	// douban cookie
-	var seeds []*collect.Task
-	for i := 0; i <= 0; i += 25 {
-		str := fmt.Sprintf("https://www.douban.com/group/szsh/discussion?start=%d", i)
-		seeds = append(seeds, &collect.Task{ // 生成初始网址列表作为种子任务
-			Url:      str,
-			WaitTime: 1 * time.Second,
-			Cookie:   "gr_user_id=63380bb1-6e3f-4d56-aa90-9c6a7b0f102d; douban-fav-remind=1; _pk_id.100001.8cb4=d9738ae7115c7fbc.1574325496.11.1616726158.1614739288.; __utma=30149280.614434265.1574252090.1614739288.1616726158.14; viewed=\"35100082_26854226_11589828_35130972_35424872_26997846_26894736_26632674_1929984_35217981\"; bid=SOlBF_IZqnY",
-			RootReq:  &collect.Request{ParseFunc: doubangroup.ParseURL},
-		})
-	}
-
 	var f collect.Fetcher = collect.BrowserFetch{
 		Timeout: 3000 * time.Millisecond,
 		Logger:  logger,
 		//Proxy:   p,
 	}
 
+	seeds := make([]*collect.Task, 0, 1000)
+	seeds = append(seeds, &collect.Task{
+		Name:    "find_douban_sun_room",
+		Fetcher: f,
+	})
+
 	s := engine.NewEngine(
 		engine.WithWorkCount(5),
 		engine.WithFetcher(f),
 		engine.WithLogger(logger),
 		engine.WithSeeds(seeds),
+		engine.WithScheduler(engine.NewSchedule()),
 	)
 	s.Run()
 }
