@@ -130,7 +130,7 @@ func (e *Crawler) Schedule() {
 		task := Store.hash[seed.Name]
 		task.Fetcher = seed.Fetcher
 		task.Storage = seed.Storage
-		task.Limit = seed.Limit
+		task.Limiter = seed.Limiter
 		task.Logger = seed.Logger
 		// 在调度器启动时，通过 task.Rule.Root() 获取初始化任务，并加入到任务队列中。
 		rootReqs, err := task.Rule.Root()
@@ -166,8 +166,8 @@ func (e *Crawler) CreateWork() {
 			e.Logger.Debug("request has visited", zap.String("url:", req.Url))
 			continue
 		}
-		e.StoreVisited(req)                    // 设置当前请求已被访问
-		body, err := req.Task.Fetcher.Get(req) // 访问服务器
+		e.StoreVisited(req)      // 设置当前请求已被访问
+		body, err := req.Fetch() // 访问服务器
 		if err != nil {
 			e.Logger.Error("can't fetch ", zap.Error(err), zap.String("url", req.Url))
 			e.SetFailure(req) // 设置请求失败

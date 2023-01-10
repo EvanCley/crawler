@@ -3,8 +3,14 @@ package main
 import (
 	"crawler/collect"
 	"crawler/engine"
+	"crawler/limiter"
 	"crawler/log"
+	"crawler/proxy"
+	storage2 "crawler/storage"
+	"crawler/storage/sqlstorage"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/time/rate"
 	"time"
 )
 
@@ -16,18 +22,38 @@ func main() {
 	logger := log.NewLogger(plugin)
 	logger.Info("log init end")
 
+	// set zap global logger
+	zap.ReplaceGlobals(logger)
+
 	// proxy
-	//proxyURLs := []string{"http://127.0.0.1:8888", "http://127.0.0.1:8889"}
-	//p, err := proxy.RoundRobinProxySwitcher(proxyURLs...)
-	//if err != nil {
-	//	logger.Error("RoundRobinProxySwitcher failed")
-	//}
+	proxyURLs := []string{"http://127.0.0.1:8888", "http://127.0.0.1:8889"}
+	p, err := proxy.RoundRobinProxySwitcher(proxyURLs...)
+	if err != nil {
+		logger.Error("RoundRobinProxySwitcher failed")
+	}
 
 	var f collect.Fetcher = collect.BrowserFetch{
 		Timeout: 3000 * time.Millisecond,
 		Logger:  logger,
-		//Proxy:   p,
+		Proxy:   p,
 	}
+
+	// 后端存储
+	var storage storage2.Storage
+	storage, err = sqlstorage.New(
+		sqlstorage.WithSqlUrl("root:123456@tcp(127.0.0.1:3326)/crawler?charset=utf8"),
+		sqlstorage.WithLogger(logger.Named("sqlDB")),
+		sqlstorage.WithBatchCount(2),
+	)
+	if err != nil {
+		logger.Error("create sqlstorage failed")
+		return
+	}
+
+	// 设置限流器
+	secondLimit := rate.NewLimiter(limiter.Per(1, 2*time.Second), 1)   // 2秒钟1个
+	minuteLimit := rate.NewLimiter(limiter.Per(20, 1*time.Minute), 20) // 60秒20个
+	multiLimiter := limiter.MultiLimiter(secondLimit, minuteLimit)
 
 	seeds := make([]*collect.Task, 0, 1000)
 	seeds = append(seeds, &collect.Task{
@@ -35,6 +61,8 @@ func main() {
 			Name: "find_douban_sun_room",
 		},
 		Fetcher: f,
+		Storage: storage,
+		Limiter: multiLimiter,
 	})
 
 	s := engine.NewEngine(

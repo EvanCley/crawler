@@ -1,26 +1,17 @@
 package collect
 
 import (
+	"context"
+	"crawler/limiter"
 	"crawler/storage"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
 	"go.uber.org/zap"
+	"math/rand"
 	"sync"
 	"time"
 )
-
-// Request 单个请求
-type Request struct {
-	Task     *Task
-	Url      string // URL，表示要访问的网站
-	Method   string
-	Depth    int // 表示任务的当前深度，最初始的深度为 0
-	Priority int
-	RuleName string
-	TmpData  *Temp
-	//ParseFunc func([]byte, *Request) ParseResult // ParseFunc 函数会解析从网站获取到的网站信息，并返回 Requests 数组用于进一步获取数据
-}
 
 type ParseResult struct {
 	Requests []*Request    // 表示要当前网站下接下来要爬取的网站们
@@ -38,6 +29,7 @@ type Task struct {
 	Storage     storage.Storage
 	Rule        RuleTree // 规则条件，其中 Root 生成了初始化的爬虫任务
 	Logger      *zap.Logger
+	Limiter     limiter.RateLimiter
 }
 
 type Property struct {
@@ -70,6 +62,28 @@ func (c *Context) Output(data interface{}) *storage.DataCell {
 		"Time": time.Now().Format("2006-01-02 15:04:05"),
 	}
 	return res
+}
+
+// Request 单个请求
+type Request struct {
+	Task     *Task
+	Url      string // URL，表示要访问的网站
+	Method   string
+	Depth    int // 表示任务的当前深度，最初始的深度为 0
+	Priority int
+	RuleName string
+	TmpData  *Temp
+	//ParseFunc func([]byte, *Request) ParseResult // ParseFunc 函数会解析从网站获取到的网站信息，并返回 Requests 数组用于进一步获取数据
+}
+
+func (r *Request) Fetch() ([]byte, error) {
+	if err := r.Task.Limiter.Wait(context.Background()); err != nil {
+		return nil, err
+	}
+	// 随机休眠，模拟人类行为
+	sleepTime := rand.Int63n(int64(r.Task.WaitTime * 1000))
+	time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+	return r.Task.Fetcher.Get(r)
 }
 
 // Check 判断爬虫的当前深度是否超过了最大深度
