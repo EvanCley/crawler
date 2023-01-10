@@ -3,6 +3,7 @@ package engine
 import (
 	"crawler/collect"
 	"crawler/parse/doubangroup"
+	"crawler/storage"
 	"go.uber.org/zap"
 	"sync"
 )
@@ -35,6 +36,10 @@ type Schedule struct {
 var Store = &CrawlerStore{
 	list: []*collect.Task{},
 	hash: map[string]*collect.Task{},
+}
+
+func GetFields(taskName string, ruleName string) []string {
+	return Store.hash[taskName].Rule.Trunk[ruleName].ItemFields
 }
 
 type CrawlerStore struct {
@@ -123,8 +128,16 @@ func (e *Crawler) Schedule() {
 	var reqs []*collect.Request
 	for _, seed := range e.Seeds {
 		task := Store.hash[seed.Name]
+		task.Fetcher = seed.Fetcher
+		task.Storage = seed.Storage
+		task.Limit = seed.Limit
+		task.Logger = seed.Logger
 		// 在调度器启动时，通过 task.Rule.Root() 获取初始化任务，并加入到任务队列中。
-		rootReqs := task.Rule.Root()
+		rootReqs, err := task.Rule.Root()
+		if err != nil {
+			e.Logger.Error("get root failed", zap.Error(err))
+			continue
+		}
 		reqs = append(reqs, rootReqs...)
 	}
 	go e.scheduler.Schedule()
@@ -166,7 +179,10 @@ func (e *Crawler) CreateWork() {
 			continue
 		}
 		rule := req.Task.Rule.Trunk[req.RuleName]
-		result := rule.ParseFunc(&collect.Context{Body: body, Req: req}) // 解析服务器返回的数据
+		result, err := rule.ParseFunc(&collect.Context{Body: body, Req: req}) // 解析服务器返回的数据
+		if err != nil {
+			e.Logger.Error("ParseFunc failed", zap.Error(err), zap.String("url", req.Url))
+		}
 		if len(result.Requests) > 0 {
 			go e.scheduler.Push(result.Requests...)
 		}
@@ -182,8 +198,16 @@ func (e *Crawler) HandleResult() {
 			for _, req := range result.Requests { // 其中要进一步爬取的 Requests 列表将全部发送回 s.requestCh 通道
 				e.scheduler.Push(req)
 			}
-			for _, item := range result.Items { // result.Items 里包含了我们实际希望得到的结果，所以我们先用日志把结果打印出来
-				// TODO: store
+			// 循环遍历 Items，判断其中的数据类型，如果数据类型为 DataCell，我们就要用专门的存储引擎将这些数据存储起来。
+			// 存储引擎是和每一个爬虫任务绑定在一起的，不同的爬虫任务可能会有不同的存储引擎。
+			for _, item := range result.Items { // result.Items 里包含了我们实际希望得到的结果
+				switch d := item.(type) {
+				case *storage.DataCell:
+					name := d.GetTaskName()
+					task := Store.hash[name]
+					task.Storage.Save(d)
+				}
+				// 用日志把结果打印出来
 				e.Logger.Sugar().Info("get result", item)
 			}
 		}

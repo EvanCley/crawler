@@ -12,12 +12,14 @@ const urlListRe = `(https://www.douban.com/group/topic/[0-9a-z]+/)"[^>]*>([^<]+)
 const ContentRe = `<div class="topic-content">[\s\S]*?阳台[\s\S]*?<div class="aside">`
 
 var DoubanGroupTask = &collect.Task{
-	Name:     "find_douban_sun_romm",
-	WaitTime: 1 * time.Second,
-	MaxDepth: 5,
-	Cookie:   "xxx",
+	Property: collect.Property{
+		Name:     "find_douban_sun_romm",
+		WaitTime: 1 * time.Second,
+		MaxDepth: 5,
+		Cookie:   "xxx",
+	},
 	Rule: collect.RuleTree{
-		Root: func() []*collect.Request {
+		Root: func() ([]*collect.Request, error) {
 			var roots []*collect.Request
 			for i := 0; i < 25; i += 25 {
 				str := fmt.Sprintf("<https://www.douban.com/group/szsh/discussion?start=%d>", i)
@@ -28,16 +30,16 @@ var DoubanGroupTask = &collect.Task{
 					RuleName: "解析网站URL",
 				})
 			}
-			return roots
+			return roots, nil
 		},
 		Trunk: map[string]*collect.Rule{
-			"解析网站URL": &collect.Rule{ParseURL},
-			"解析阳台房":   &collect.Rule{GetSunRoom},
+			"解析网站URL": &collect.Rule{ParseFunc: ParseURL},
+			"解析阳台房":   &collect.Rule{ParseFunc: GetSunRoom},
 		},
 	},
 }
 
-func ParseURL(ctx *collect.Context) collect.ParseResult {
+func ParseURL(ctx *collect.Context) (collect.ParseResult, error) {
 	re := regexp.MustCompile(urlListRe)
 
 	matches := re.FindAllSubmatch(ctx.Body, -1)
@@ -53,24 +55,22 @@ func ParseURL(ctx *collect.Context) collect.ParseResult {
 			RuleName: "解析阳台房",
 		})
 	}
-	return result
+	return result, nil
 }
 
-func GetSunRoom(ctx *collect.Context) collect.ParseResult {
+func GetSunRoom(ctx *collect.Context) (collect.ParseResult, error) {
 	re := regexp.MustCompile(ContentRe)
 
 	ok := re.Match(ctx.Body)
 	if !ok {
-		return collect.ParseResult{
-			Items: []interface{}{},
-		}
+		return collect.ParseResult{Items: []interface{}{}}, nil
 	}
 
 	result := collect.ParseResult{
 		Items: []interface{}{ctx.Req.Url},
 	}
 
-	return result
+	return result, nil
 }
 
 // 最后在 main 函数中，为了找到所有符合条件的帖子，使用了广度优先搜索算法。循环往复遍历 worklist 列表，完成爬取与解析的动作，找到所有符合条件的帖子。
